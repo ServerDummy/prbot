@@ -1,121 +1,61 @@
-name: PR Bot Review
+name: PR Review
 
 on:
   pull_request:
-    types: [opened, edited, synchronize]
-
-permissions:
-  pull-requests: write
-  contents: read
+    branches: [master]
 
 jobs:
-  check-pr-template:
+  review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: Check PR template
-        id: check-template
-        uses: actions/github-script@v5
-        with:
-          script: |
-            const body = context.payload.pull_request.body;
-            const keySections = [
-              "**Car**",
-              "**Route**",
-              "**Description**",
-              "**Verification**",
-              "**Checklist**"
-            ];
-
-            const isValidTemplate = keySections.every(section => body.includes(section));
-            return isValidTemplate;
-
-      - name: Install GitHub CLI for Draft
-        if: ${{ steps.check-template.outputs.result }} == 'false'
+      - name: Check for template
         run: |
-          if ! gh --version; then
-            echo "Installing GitHub CLI..."
-            sudo apt-get install gh
+          # Read the content of the template file
+          TEMPLATE_CONTENT=$(cat .github/PULL_REQUEST_TEMPLATE.md)
+
+          # Check if the template exists in the PR body
+          if [[ "${{ github.event.pull_request.body }}" =~ "$TEMPLATE_CONTENT" ]]; then
+            echo "Template found!"
+          else
+            echo "Error: PR template is missing!"
+            exit 1
           fi
 
-      - name: Authenticate with GitHub CLI for Draft
-        if: ${{ steps.check-template.outputs.result }} == 'false'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Convert to draft if template is invalid
-        if: ${{ steps.check-template.outputs.result }} == 'false'
-        run: |
-          gh api graphql -F id="${{ github.event.pull_request.node_id }}" -f query='
-            mutation($id: ID!) {
-              convertPullRequestToDraft(input: { pullRequestId: $id }) {
-                pullRequest {
-                  id
-                  number
-                  isDraft
-                }
-              }
-            }
-          '
-
-      - name: Add bot-review label and comment if template is invalid
-        if: ${{ steps.check-template.outputs.result }} == 'false'
-        uses: actions/github-script@v5
+      - name: Set draft status
+        if: always()
+        uses: actions/github-script@v7
         with:
           script: |
-            const prNumber = context.payload.pull_request.number;
-            await github.rest.issues.addLabels({
+            console.log(context.issue);
+            github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
+              issue_number: context.issue.number,
+              state: 'draft'
+            })
+
+      - name: Add bot-review label
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
               labels: ['bot-review']
-            });
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: 'This pull request does not follow the required template. Please update the PR description to include all necessary sections.'
-            });
+            })
 
-      - name: Install GitHub CLI for Ready for Review
-        if: ${{ steps.check-template.outputs.result }} == 'true'
-        run: |
-          if ! gh --version; then
-            echo "Installing GitHub CLI..."
-            sudo apt-get install gh
-          fi
-
-      - name: Authenticate with GitHub CLI for Ready for Review
-        if: ${{ steps.check-template.outputs.result }} == 'true'
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Mark as ready for review if template is valid
-        if: ${{ steps.check-template.outputs.result }} == 'true'
-        run: |
-          gh api graphql -F id="${{ github.event.pull_request.node_id }}" -f query='
-            mutation($id: ID!) {
-              markPullRequestReadyForReview(input: { pullRequestId: $id }) {
-                pullRequest {
-                  id
-                  number
-                  isDraft
-                }
-              }
-            }
-          '
-
-      - name: Remove bot-review label if template is valid
-        if: ${{ steps.check-template.outputs.result }} == 'true'
-        uses: actions/github-script@v5
+      - name: Remove bot-review label
+        if: always()
+        uses: actions/github-script@v7
         with:
           script: |
-            const prNumber = context.payload.pull_request.number;
-            await github.rest.issues.removeLabel({
+            github.rest.issues.removeLabel({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: prNumber,
+              issue_number: context.issue.number,
               name: 'bot-review'
-            });
+            })
