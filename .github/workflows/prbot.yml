@@ -29,6 +29,7 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GH_ACC_TOKEN }}
           script: |
             console.log(context.issue);
             github.rest.issues.update({
@@ -42,6 +43,7 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GH_ACC_TOKEN }}
           script: |
             github.rest.issues.addLabels({
               owner: context.repo.owner,
@@ -54,6 +56,7 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GH_ACC_TOKEN }}
           script: |
             github.rest.issues.removeLabel({
               owner: context.repo.owner,
